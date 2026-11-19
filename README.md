@@ -1,11 +1,42 @@
 # PV Datasheet Converter
 
-A browser-only static site that turns PV module datasheet PDFs into editable, structured Excel workbooks. PDF.js extracts text locally and SheetJS creates the `.xlsx`; no PDF or extracted data is uploaded.
+[![Live demo](https://img.shields.io/badge/demo-GitHub%20Pages-0e7c61)](https://abdullah-sabbah.github.io/pv-datasheet-converter/)
+[![No backend](https://img.shields.io/badge/processing-browser--only-1f6f5b)](#privacy)
 
-## Deploy on Netlify
+Convert photovoltaic module datasheet PDFs into structured, editable Excel workbooks directly in the browser.
 
-1. For the fastest deploy, drag the `dist` folder into [Netlify Drop](https://app.netlify.com/drop). Alternatively, connect the full project folder/repository; its `netlify.toml` already points Netlify to `dist`.
-2. If configuring manually, leave the build command empty and set the publish directory to `dist`.
-3. Open the site, drop a datasheet PDF, review highlighted fields, edit any values, and click **Download Excel**.
+## What it does
 
-The app loads PDF.js and the SheetJS-compatible `xlsx-js-style` bundle from public CDNs, so an internet connection is needed when the page first loads. The PDF processing itself remains in the browser.
+Upload a manufacturer PDF through drag-and-drop or the file picker. The app uses PDF.js to read the document locally, detects multi-rating electrical tables such as 440–470 W columns, and creates one editable module preview per rated power. Missing or uncertain fields are highlighted for review. SheetJS then exports one formatted worksheet per module.
+
+The preview follows the reference workbook grouping: General, Electrical Data – STC, Electrical Data – NOCT, Temperature & Application, Mechanical Data, and Warranty. Shared values are repeated across module sheets.
+
+## Privacy
+
+There is no backend and no API key. The PDF and extracted values remain in the browser tab. PDF.js and the SheetJS-compatible bundle are loaded from public CDNs when the page opens.
+
+## Live site
+
+Open the deployed tool at **https://abdullah-sabbah.github.io/pv-datasheet-converter/**.
+
+## Local use
+
+Serve the repository over HTTP (rather than opening `index.html` directly) so browser modules and CDN assets work reliably:
+
+```bash
+python3 -m http.server 3000
+```
+
+Then visit `http://localhost:3000/`.
+
+## Netlify deployment
+
+The `dist` folder is a ready-to-drop static artifact. Drag `dist` into [Netlify Drop](https://app.netlify.com/drop), or connect the full repository; `netlify.toml` already points Netlify to `dist` with no build command.
+
+## Technology
+
+This is a static HTML/CSS/JavaScript site using PDF.js for client-side PDF text extraction and SheetJS-compatible `xlsx-js-style` for formatted `.xlsx` generation. It has no framework, backend, database, or secrets.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
