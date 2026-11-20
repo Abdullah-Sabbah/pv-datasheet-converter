@@ -23,7 +23,7 @@
     <section class="hero">
       <div class="eyebrow">DATASHEET → STRUCTURED DATA</div>
       <h1>Turn a PV datasheet into a clean Excel workbook.</h1>
-      <p class="lede">Upload a manufacturer PDF. We detect the module columns, organize the engineering values, and let you correct anything before export.</p>
+      <p class="lede">Upload almost any manufacturer PDF. We detect one or many module ratings, map the engineering values, retain unmapped rows, and let you correct everything before export.</p>
     </section>
 
     <section class="workspace" aria-label="PDF conversion workspace">
@@ -50,7 +50,7 @@
           </div>
           <button id="downloadButton" class="primary-button" type="button"><span>↓</span> Download Excel</button>
         </div>
-        <div class="legend"><span class="legend-item"><i class="legend-swatch warning"></i>Needs review / not found</span><span class="legend-item"><i class="legend-swatch detected"></i>Detected value</span><span class="legend-note">Click any cell to edit</span></div>
+        <div class="legend"><span class="legend-item"><i class="legend-swatch warning"></i>Needs review / not found</span><span class="legend-item"><i class="legend-swatch detected"></i>Detected or retained</span><span class="legend-note">Click any cell to edit · raw text is included in Excel</span></div>
         <div id="moduleTabs" class="module-tabs" role="tablist"></div>
         <div id="tableWrap" class="table-wrap"></div>
         <div class="review-footer"><button id="resetButton" class="secondary-button" type="button">Start over</button><span>Values are kept in this tab only.</span></div>

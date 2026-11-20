@@ -1,226 +1,65 @@
 const $ = (id) => document.getElementById(id);
-const dropZone = $('dropZone');
-const fileInput = $('fileInput');
-const browseButton = $('browseButton');
-const progressPanel = $('progressPanel');
-const progressBar = $('progressBar');
-const progressLabel = $('progressLabel');
-const progressPercent = $('progressPercent');
-const fileStatus = $('fileStatus');
-const reviewPanel = $('reviewPanel');
-const reviewTitle = $('reviewTitle');
-const reviewSummary = $('reviewSummary');
-const moduleTabs = $('moduleTabs');
-const tableWrap = $('tableWrap');
-const errorPanel = $('errorPanel');
-const downloadButton = $('downloadButton');
-const resetButton = $('resetButton');
+const dropZone = $('dropZone'), fileInput = $('fileInput'), browseButton = $('browseButton');
+const progressPanel = $('progressPanel'), progressBar = $('progressBar'), progressLabel = $('progressLabel'), progressPercent = $('progressPercent');
+const fileStatus = $('fileStatus'), reviewPanel = $('reviewPanel'), reviewTitle = $('reviewTitle'), reviewSummary = $('reviewSummary');
+const moduleTabs = $('moduleTabs'), tableWrap = $('tableWrap'), errorPanel = $('errorPanel'), downloadButton = $('downloadButton'), resetButton = $('resetButton');
 
-let modules = [];
-let activeModule = 0;
+let modules = [], activeModule = 0, sourceText = '', sourceRows = [], sourceFileName = '';
 
 const SECTION_DEFS = [
-  { key:'general', title:'General', rows:[
-    ['manufacturerSeries','Manufacturer / Series',''],['model','Model',''],['technology','Technology','']
-  ]},
-  { key:'stc', title:'Electrical Data – STC', rows:[
-    ['pmax','Peak power (Pmax)','Wp'],['powerSelection','Power selection','W'],['vmpp','Max. power voltage (Vmpp)','V'],['impp','Max. power current (Impp)','A'],['voc','Open-circuit voltage (Voc)','V'],['isc','Short-circuit current (Isc)','A'],['efficiency','Module efficiency','%']
-  ]},
-  { key:'noct', title:'Electrical Data – NOCT', rows:[
-    ['noctPmax','Peak power (Pmax)','Wp'],['noctVmpp','Max. power voltage (Vmpp)','V'],['noctImpp','Max. power current (Impp)','A'],['noctVoc','Open-circuit voltage (Voc)','V'],['noctIsc','Short-circuit current (Isc)','A']
-  ]},
-  { key:'temperature', title:'Temperature & Application', rows:[
-    ['noct','NOCT','°C'],['tempPmax','Temp. coeff. of Pmax','%/°C'],['tempVoc','Temp. coeff. of Voc','%/°C'],['tempIsc','Temp. coeff. of Isc','%/°C'],['operatingTemp','Operating temperature','°C'],['maxVoltage','Max. system voltage','V DC'],['fuse','Max. series fuse rating','A']
-  ]},
-  { key:'mechanical', title:'Mechanical Data', rows:[
-    ['cells','No. of cells','cells'],['dimensions','Dimensions (L×W×H)','mm'],['weight','Weight','kg'],['frontGlass','Front glass',''],['backGlass','Back glass',''],['frame','Frame',''],['junctionBox','Junction box',''],['cable','Cable',''],['connector','Connector',''],['testLoad','Test load (front / back)','Pa'],['packaging','Packaging','']
-  ]},
-  { key:'warranty', title:'Warranty', rows:[
-    ['productWarranty','Product warranty','years'],['powerGuarantee','Power guarantee','years'],['degradation','1st-year degradation','%']
-  ]}
+  {key:'general', title:'General', rows:[['manufacturerSeries','Manufacturer / Series',''],['model','Model / Product Type',''],['technology','Technology / Cell Type',''],['country','Country of Manufacturer','']]},
+  {key:'stc', title:'Electrical Data – STC', rows:[['pmax','Peak / Maximum Power (Pmax)','Wp'],['powerSelection','Power Tolerance / Selection','W'],['vmpp','Maximum Power Voltage (Vmpp)','V'],['impp','Maximum Power Current (Impp)','A'],['voc','Open-Circuit Voltage (Voc)','V'],['isc','Short-Circuit Current (Isc)','A'],['efficiency','Module Efficiency','%']]},
+  {key:'noct', title:'Electrical Data – NOCT / NMOT', rows:[['noctPmax','Peak / Maximum Power (NOCT/NMOT)','Wp'],['noctVmpp','Maximum Power Voltage (NOCT/NMOT)','V'],['noctImpp','Maximum Power Current (NOCT/NMOT)','A'],['noctVoc','Open-Circuit Voltage (NOCT/NMOT)','V'],['noctIsc','Short-Circuit Current (NOCT/NMOT)','A'],['noct','NOCT / NMOT','°C']]},
+  {key:'temperature', title:'Temperature Ratings', rows:[['tempPmax','Temperature Coefficient of Pmax','%/°C'],['tempVoc','Temperature Coefficient of Voc','%/°C'],['tempIsc','Temperature Coefficient of Isc','%/°C'],['tempVmpp','Temperature Coefficient of Vmpp','%/°C'],['tempImpp','Temperature Coefficient of Impp','%/°C']]},
+  {key:'application', title:'Application / Operating Conditions', rows:[['operatingTemp','Operating Temperature','°C'],['maxVoltage','Maximum System Voltage','V DC'],['fuse','Maximum Series Fuse Rating','A'],['maxStaticFront','Maximum Static Load – Front','Pa'],['maxStaticBack','Maximum Static Load – Back','Pa'],['fireClass','Fire Safety Class',''],['safetyClass','Safety Class','']]},
+  {key:'mechanical', title:'Mechanical Data', rows:[['cells','Solar Cells / No. of Cells','cells'],['dimensions','Dimensions (L×W×H)','mm'],['weight','Weight','kg'],['frontGlass','Front Glass',''],['backGlass','Back Glass',''],['frame','Frame',''],['junctionBox','Junction Box',''],['cable','Cable / Cable Length',''],['cableSize','Cable Cross Section Size','mm²'],['connector','Connector',''],['testLoad','Test Load / Static Load','Pa'],['packaging','Packaging / Modules per Box','']]},
+  {key:'warranty', title:'Warranty / Degradation', rows:[['productWarranty','Product Warranty','years'],['powerGuarantee','Power Warranty / Guarantee','years'],['degradation','Annual / First-Year Degradation','%'],['warrantyNotes','Warranty Notes','']]}
 ];
+const ALL_FIXED_KEYS = new Set(SECTION_DEFS.flatMap(s=>s.rows.map(r=>r[0])));
 
-function blankModule(power) {
-  const data = {};
-  SECTION_DEFS.forEach(section => section.rows.forEach(([key]) => data[key] = {value:'', found:false}));
-  data.pmax.value = String(power); data.pmax.found = true;
-  return { power, data, source:'Detected from PDF' };
-}
+function clean(v){return String(v??'').replace(/\s+/g,' ').trim()}
+function norm(v){return clean(v).toLowerCase().replace(/[–—−]/g,'-').replace(/[^a-z0-9%/+.-]+/g,' ')}
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function token(v){return clean(v).replace(/[|¦]/g,'')}
+function makeCell(value='',found=false,confidence='missing',source=''){return {value:clean(value),found:Boolean(found&&clean(value)),confidence,source}}
+function blankModule(power, label=''){const data={};SECTION_DEFS.forEach(s=>s.rows.forEach(([k])=>data[k]=makeCell())); if(power)data.pmax=makeCell(String(power),true,'high','rating header');return {power:power||'',label:label||'',data,extras:[],quality:0}}
+function setCell(m,key,value,confidence='medium',source=''){if(!m.data[key])m.data[key]=makeCell();const v=clean(value);if(v && (!m.data[key].found || confidence==='high'))m.data[key]=makeCell(v,true,confidence,source)}
+function setShared(key,value,modules,confidence='medium',source=''){modules.forEach(m=>setCell(m,key,value,confidence,source))}
 
-function clean(value){ return String(value ?? '').replace(/\s+/g,' ').trim(); }
-function norm(value){ return clean(value).toLowerCase().replace(/[–—−]/g,'-').replace(/[^a-z0-9%/+.-]+/g,' '); }
-function setValue(mod, key, value, found=true){ const v=clean(value); if(v){ mod.data[key]={value:v,found}; } }
-function fieldKey(label, section){
-  const l=norm(label);
-  if(/peak power|maximum power.*pmax|power watts/.test(l)) return section==='noct'?'noctPmax':'pmax';
-  if(/power selection/.test(l)) return 'powerSelection';
-  if(/maximum power voltage|vmpp/.test(l)) return section==='noct'?'noctVmpp':'vmpp';
-  if(/maximum power current|impp/.test(l)) return section==='noct'?'noctImpp':'impp';
-  if(/open circuit voltage|open-circuit voltage|voc/.test(l)) return section==='noct'?'noctVoc':'voc';
-  if(/short circuit current|short-circuit current|isc/.test(l)) return section==='noct'?'noctIsc':'isc';
-  if(/module efficiency|efficiency/.test(l)) return 'efficiency';
-  if(/^noct|nominal operating cell temperature/.test(l)) return 'noct';
-  if(/temperature coefficient.*pmax|temp.*coeff.*pmax/.test(l)) return 'tempPmax';
-  if(/temperature coefficient.*voc|temp.*coeff.*voc/.test(l)) return 'tempVoc';
-  if(/temperature coefficient.*isc|temp.*coeff.*isc/.test(l)) return 'tempIsc';
-  if(/operating temperature/.test(l)) return 'operatingTemp';
-  if(/max(imum)? system voltage/.test(l)) return 'maxVoltage';
-  if(/max(imum)? series fuse/.test(l)) return 'fuse';
-  if(/solar cells|no. of cells|number of cells/.test(l)) return 'cells';
-  if(/^dimensions|module dimensions/.test(l)) return 'dimensions';
-  if(/^weight/.test(l)) return 'weight';
-  if(/front glass/.test(l)) return 'frontGlass';
-  if(/back glass/.test(l)) return 'backGlass';
-  if(/^frame/.test(l)) return 'frame';
-  if(/junction box|j-box/.test(l)) return 'junctionBox';
-  if(/^cables?|^cable/.test(l)) return 'cable';
-  if(/^connector/.test(l)) return 'connector';
-  if(/test load/.test(l)) return 'testLoad';
-  if(/packaging|package/.test(l)) return 'packaging';
-  if(/product warranty/.test(l)) return 'productWarranty';
-  if(/power guarantee/.test(l)) return 'powerGuarantee';
-  if(/degradation|attenuation/.test(l)) return 'degradation';
-  return null;
-}
-
-async function loadPdfjs(){
-  if(window.pdfjsLib){
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
-    return window.pdfjsLib;
-  }
-  const lib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
-  lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
-  window.pdfjsLib=lib; return lib;
-}
-function itemRows(items){
+function itemRows(items,page){
   const rows=[];
-  items.forEach(item=>{
-    const text=clean(item.str); if(!text) return;
-    const x=item.transform[4], y=item.transform[5];
-    let row=rows.find(r=>Math.abs(r.y-y)<3.2);
-    if(!row){row={y,items:[]};rows.push(row)}
-    row.items.push({x,y,text,w:item.width||0});
-  });
+  items.forEach(item=>{const text=token(item.str);if(!text)return;const x=item.transform[4],y=item.transform[5];let row=rows.find(r=>Math.abs(r.y-y)<3.4);if(!row){row={y,items:[],page};rows.push(row)}row.items.push({x,y,text,w:item.width||0})});
   return rows.sort((a,b)=>b.y-a.y).map(r=>({...r,items:r.items.sort((a,b)=>a.x-b.x),text:r.items.map(i=>i.text).join(' ')}));
 }
-function findPowerColumns(rows){
-  let best=null;
-  rows.forEach((row,ri)=>{
-    const found=[];
-    row.items.forEach(i=>{const match=i.text.match(/^(4[0-9]{2}|5[0-9]{2})$/);if(match)found.push({power:Number(match[1]),x:i.x+(i.w||0)/2})});
-    if(found.length>=2 && (!best || found.length>best.cols.length)) best={rowIndex:ri,cols:found};
-  });
-  return best;
+function numericPower(text){const m=clean(text).replace(/[,;]/g,'').match(/^(?:[A-Z-]*)?(\d{3,4})(?:W)?$/i);if(!m)return null;const n=Number(m[1]);return n>=150&&n<=1000?n:null}
+function embeddedPowerHits(text){const hits=[];const value=clean(text);const re=/(?:^|[-\s])([2-9]\d{2}|1000)(?=\s*(?:W|Wp|\/|$|[-\s]))/gi;let match;while((match=re.exec(value))){const n=Number(match[1]);if(n>=200&&n<=1000)hits.push(n)}return hits}
+function findPowerHeader(rows){
+  const candidates=[];
+  rows.forEach((row,ri)=>{const hits=[];row.items.forEach(i=>{const direct=numericPower(i.text);if(direct)hits.push({n:direct,x:i.x+(i.w||0)/2});embeddedPowerHits(i.text).forEach(n=>hits.push({n,x:i.x+(i.w||0)/2}))});const unique=[...new Map(hits.map(x=>[`${x.n}-${Math.round(x.x)}`,x])).values()];const byPower=[...new Map(unique.map(x=>[x.n,x])).values()];if(byPower.length>=2)candidates.push({rowIndex:ri,cols:byPower.sort((a,b)=>a.x-b.x),score:byPower.length+(row.text.match(/type|model|pmax|power|wp|watt/i)?4:0)})});
+  candidates.sort((a,b)=>b.score-a.score);return candidates[0]||null;
 }
-function rowValues(row, cols){
-  return cols.map((col,idx)=>{
-    const left=idx===0?col.x-22:(cols[idx-1].x+col.x)/2;
-    const right=idx===cols.length-1?col.x+80:(col.x+cols[idx+1].x)/2;
-    return clean(row.items.filter(i=>i.x>=left && i.x<right).map(i=>i.text).join(' '));
-  });
-}
-function parseGeneral(full, module){
-  const text=full.replace(/\s+/g,' ');
-  const model=text.match(/(TSM-[A-Z0-9.]+)/i); if(model) setValue(module,'model',model[1]);
-  if(/Trina/i.test(text)) setValue(module,'manufacturerSeries','Trina Solar – Vertex S+');
-  const tech=text.match(/(N-type i-TOPCon Ultra[^\n]{0,40}(?:dual glass )?monocrystalline module)/i); if(tech) setValue(module,'technology',tech[1]); else if(/N-type i-TOPCon Ultra/i.test(text)) setValue(module,'technology','N-type i-TOPCon Ultra, dual glass monocrystalline');
-}
-function parseRows(rows, powerInfo, modules){
-  let section='stc';
-  rows.forEach((row,idx)=>{
-    const label=clean(row.items.filter(i=>i.x<powerInfo.cols[0].x-24).map(i=>i.text).join(' '));
-    const n=norm(label);
-    if(/electrical data.*noct|noct.*electrical/.test(n)){section='noct';return}
-    if(/electrical data.*stc/.test(n)){section='stc';return}
-    if(/temperature rating/.test(n)){section='temperature';return}
-    if(/application conditions/.test(n)){section='temperature';return}
-    if(/mechanical data/.test(n)){section='mechanical';return}
-    if(/warranty/.test(n)){section='warranty';return}
-    const key=fieldKey(label,section); if(!key) return;
-    const values=rowValues(row,powerInfo.cols);
-    values.forEach((value,i)=>{if(modules[i]) setValue(modules[i],key,value)});
-  });
-}
-function parseSingleValueRows(rows, modules){
-  rows.forEach(row=>{
-    const label=clean(row.items.map(i=>i.text).join(' '));
-    const key=fieldKey(label,'temperature'); if(!key || ['pmax','vmpp','impp','voc','isc','efficiency','powerSelection'].includes(key)) return;
-    const values=row.items.slice(1).map(i=>i.text).join(' ');
-    if(values) modules.forEach(m=>{if(!m.data[key].found)setValue(m,key,values)});
-  });
-}
-function fallbackExtract(full, modules){
-  const text=full.replace(/\s+/g,' ');
-  const shared=[['operatingTemp',/Operating Temperature\s*:?\s*(-?\d+\s*~\s*\+?\d+\s*°?C)/i],['maxVoltage',/Maximum System Voltage\s*:?\s*([0-9,]+\s*V\s*DC[^ ]*)/i],['fuse',/Max(?:imum)? Series Fuse Rating\s*:?\s*([0-9.]+\s*A)/i],['noct',/NOCT\s*:?\s*([0-9]+\s*\(?.{0,4}\)?)/i]];
-  shared.forEach(([key,re])=>{const m=text.match(re);if(m)modules.forEach(x=>setValue(x,key,m[1]))});
-}
-async function extractPdf(file){
-  const pdfjs=await loadPdfjs();
-  const buffer=await file.arrayBuffer();
-  const pdf=await pdfjs.getDocument({data:buffer}).promise;
-  const allRows=[]; let full='';
-  for(let p=1;p<=pdf.numPages;p++){
-    progressLabel.textContent=`Reading page ${p} of ${pdf.numPages}…`;
-    const page=await pdf.getPage(p); const content=await page.getTextContent();
-    const rows=itemRows(content.items); allRows.push(...rows); full += content.items.map(i=>i.str).join(' ')+' ';
-    const pct=Math.round((p/pdf.numPages)*55); progressBar.style.width=pct+'%'; progressPercent.textContent=pct+'%';
-  }
-  progressLabel.textContent='Detecting module columns…'; progressBar.style.width='68%'; progressPercent.textContent='68%';
-  const powerInfo=findPowerColumns(allRows);
-  if(!powerInfo) throw new Error('Could not find a multi-rating power table. Try a datasheet with a visible electrical-data table.');
-  const detected=[...new Map(powerInfo.cols.map(c=>[c.power,c])).values()].sort((a,b)=>a.power-b.power);
-  modules=detected.map(c=>blankModule(c.power));
-  parseGeneral(full,modules[0]);
-  modules.forEach((m,i)=>{ if(i>0){m.data.manufacturerSeries={...modules[0].data.manufacturerSeries};m.data.model={...modules[0].data.model};m.data.technology={...modules[0].data.technology};} });
-  parseRows(allRows,powerInfo,modules); parseSingleValueRows(allRows,modules); fallbackExtract(full,modules);
-  // Shared identity fields are copied to every module.
-  ['manufacturerSeries','technology','operatingTemp','maxVoltage','fuse','noct','tempPmax','tempVoc','tempIsc','cells','dimensions','weight','frontGlass','backGlass','frame','junctionBox','cable','connector','testLoad','packaging','productWarranty','powerGuarantee','degradation'].forEach(key=>{
-    const source=modules.find(m=>m.data[key].found); if(source) modules.forEach(m=>{if(!m.data[key].found)m.data[key]={...source.data[key]}});
-  });
-  progressLabel.textContent='Ready for review'; progressBar.style.width='100%'; progressPercent.textContent='100%';
-  return modules;
-}
-function render(){
-  reviewPanel.classList.remove('hidden'); dropZone.classList.add('hidden');
-  const missing=modules.reduce((n,m)=>n+Object.values(m.data).filter(v=>!v.found||!v.value).length,0);
-  reviewTitle.textContent=`${modules.length} module${modules.length===1?'':'s'} detected`;
-  reviewSummary.textContent=`${modules.map(m=>m.power+' W').join(' · ')}  ·  ${missing} field${missing===1?'':'s'} flagged for review`;
-  moduleTabs.innerHTML=modules.map((m,i)=>`<button class="module-tab ${i===activeModule?'active':''}" data-index="${i}" role="tab" aria-selected="${i===activeModule}">${m.power}W</button>`).join('');
-  moduleTabs.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{activeModule=Number(b.dataset.index);renderTable();renderTabs()}));
-  renderTable(); renderTabs();
-}
-function renderTabs(){moduleTabs.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('active',i===activeModule));}
-function renderTable(){
-  const m=modules[activeModule];
-  tableWrap.innerHTML=`<table class="data-table"><thead><tr><th>Parameter</th><th>${m.power}W value</th><th>Unit / status</th></tr></thead><tbody>${SECTION_DEFS.map(section=>`<tr class="section-row"><td colspan="3">${section.title}</td></tr>${section.rows.map(([key,label,unit])=>{const cell=m.data[key]||{value:'',found:false};const review=!cell.found||!cell.value;return `<tr class="${review?'needs-review':''}"><td class="param">${label}</td><td><input data-key="${key}" value="${escapeHtml(cell.value)}" aria-label="${label}" /></td><td class="unit">${unit||''} ${review?'<span class="flag">· review</span>':'<span>· detected</span>'}</td></tr>`}).join('')}`).join('')}</tbody></table>`;
-  tableWrap.querySelectorAll('input').forEach(input=>input.addEventListener('input',e=>{const key=e.target.dataset.key;m.data[key].value=e.target.value;m.data[key].found=Boolean(e.target.value.trim());e.target.closest('tr').classList.toggle('needs-review',!m.data[key].found);e.target.parentElement.nextElementSibling.innerHTML=`${SECTION_DEFS.flatMap(s=>s.rows).find(r=>r[0]===key)?.[2]||''} ${m.data[key].found?'<span>· detected</span>':'<span class="flag">· review</span>'}`;reviewSummary.textContent=`${modules.map(x=>x.power+' W').join(' · ')}  ·  ${modules.reduce((n,x)=>n+Object.values(x.data).filter(v=>!v.found||!v.value).length,0)} fields flagged for review`}));
-}
-function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
-function excelRows(m){
-  const rows=[['PV MODULE – DATA SUMMARY','', ''],[`SOLAR PV MODULE – ${m.power} W`,'','']];
-  SECTION_DEFS.forEach(section=>{rows.push([section.title,'','']);section.rows.forEach(([key,label,unit])=>rows.push([label,m.data[key]?.value||'',unit]))});
-  return rows;
-}
-function downloadExcel(){
-  const wb=XLSX.utils.book_new();
-  modules.forEach(m=>{
-    const ws=XLSX.utils.aoa_to_sheet(excelRows(m));
-    ws['!cols']=[{wch:34},{wch:46},{wch:16}];
-    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:2}},{s:{r:1,c:0},e:{r:1,c:2}}];
-    const end=excelRows(m).length;
-    for(let r=0;r<end;r++)for(let c=0;c<3;c++){const cell=ws[XLSX.utils.encode_cell({r,c})];if(!cell)continue;cell.s={font:{name:'Arial',sz:r<2?12:10,bold:r<2||c===0,color:{rgb:'163D31'}},alignment:{vertical:'center',wrap_text:true},fill:r<2?{fgColor:{rgb:'DDF2E6'}}:({fgColor:{rgb:'FFFFFF'}})}}
-    let row=2; SECTION_DEFS.forEach(s=>{ws[XLSX.utils.encode_cell({r:row,c:0})].s={font:{bold:true,color:{rgb:'075843'}},fill:{fgColor:{rgb:'DDF2E6'}}};for(let c=0;c<3;c++)ws[XLSX.utils.encode_cell({r:row,c:c})].s={font:{bold:true,color:{rgb:'075843'}},fill:{fgColor:{rgb:'DDF2E6'}}};row+=1+s.rows.length});
-    ws['!rows']=[{hpt:24},{hpt:22}];
-    XLSX.utils.book_append_sheet(wb,ws,`${m.power}W`.slice(0,31));
-  });
-  XLSX.writeFile(wb,`pv-module-data-${new Date().toISOString().slice(0,10)}.xlsx`);
-}
-function showError(message){errorPanel.textContent=message;errorPanel.classList.remove('hidden');progressPanel.classList.add('hidden')}
-async function handleFile(file){
-  if(!file || file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf')) return showError('Please choose a PDF datasheet.');
-  errorPanel.classList.add('hidden'); fileStatus.textContent=`Selected: ${file.name}`;fileStatus.classList.remove('hidden');progressPanel.classList.remove('hidden');progressBar.style.width='8%';progressPercent.textContent='8%';
-  try{await extractPdf(file);activeModule=0;render()}catch(err){console.error(err);showError(err.message||'The PDF could not be read.');}
-}
-dropZone.addEventListener('click',e=>{if(e.target!==browseButton)fileInput.click()});browseButton.addEventListener('click',e=>{e.stopPropagation();fileInput.click()});fileInput.addEventListener('change',e=>handleFile(e.target.files[0]));
-['dragenter','dragover'].forEach(type=>dropZone.addEventListener(type,e=>{e.preventDefault();dropZone.classList.add('is-dragging')}));['dragleave','drop'].forEach(type=>dropZone.addEventListener(type,e=>{e.preventDefault();dropZone.classList.remove('is-dragging')}));dropZone.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));
-downloadButton.addEventListener('click',downloadExcel);resetButton.addEventListener('click',()=>{modules=[];fileInput.value='';fileStatus.classList.add('hidden');progressPanel.classList.add('hidden');reviewPanel.classList.add('hidden');errorPanel.classList.add('hidden');dropZone.classList.remove('hidden')});
+function powersFromText(text){const counts=new Map();const add=n=>{const value=Number(n);if(value>=200&&value<=1000)counts.set(value,(counts.get(value)||0)+1)};for(const m of text.matchAll(/(?:^|[-\s])([2-9]\d{2}|1000)(?=\s*(?:W|Wp|\/|$|[-\s]))/gi))add(m[1]);for(const m of text.matchAll(/\b([2-9]\d{2}|1000)\s*W(?:p)?\b/gi))add(m[1]);const repeated=[...counts.entries()].filter(([,count])=>count>=2).map(([value])=>value).sort((a,b)=>a-b);if(repeated.length>=2)return repeated;return [...counts.keys()].sort((a,b)=>a-b)}
+function coherentPowers(values){if(values.length<=2)return values;const sorted=[...values].sort((a,b)=>a-b),clusters=[[]];sorted.forEach((n,i)=>{if(i&&n-sorted[i-1]>20)clusters.push([]);clusters.at(-1).push(n)});const best=clusters.sort((a,b)=>b.length-a.length)[0];return best.length>=2?best:sorted}
+function findSinglePower(text){const patterns=[/(?:maximum|max(?:imum)?|peak|rated|nominal)\s+(?:power|output)\D{0,18}(\d{3,4})\s*W/i,/(\d{3,4})\s*W(?:p)?\b/i,/[\/-](\d{3,4})(?:\s*W)?(?:\b|\/)/i];for(const re of patterns){const m=text.match(re);if(m){const n=Number(m[1]);if(n>=150&&n<=1000)return n}}return null}
+function rowLabel(row,cols){if(!cols?.length)return row.text;return clean(row.items.filter(i=>i.x<cols[0].x-18).map(i=>i.text).join(' '))}
+function rowValues(row,cols){return cols.map((c,idx)=>{const left=idx===0?c.x-25:(cols[idx-1].x+c.x)/2;const right=idx===cols.length-1?c.x+110:(c.x+cols[idx+1].x)/2;return clean(row.items.filter(i=>i.x>=left&&i.x<right).map(i=>i.text).join(' '))})}
+function sectionFor(label,current){const n=norm(label);if(/electrical.*(stc|standard test)|stc|electrical parameters at stc/.test(n))return'stc';if(/electrical.*(noct|nmot)|noct|nmot|electrical parameters at noct/.test(n))return'noct';if(/temperature|temp coefficient/.test(n))return'temperature';if(/operating|application|condition|system voltage|fuse|static load|fire safety|safety class/.test(n))return'application';if(/mechanical|characteristic|cell|dimension|weight|glass|frame|junction|cable|connector|load|packaging/.test(n))return'mechanical';if(/warranty|degradation|attenuation|guarantee/.test(n))return'warranty';if(/general|type|model|technology|manufacturer|country/.test(n))return'general';return current}
+function fieldKey(label,section){const l=norm(label);const hasNoct=section==='noct'||/noct|nmot/.test(l);if(/manufacturer|brand|series/.test(l)&&!(/power|current|voltage/.test(l)))return'manufacturerSeries';if(/model|module type|type$|product type/.test(l)&&!/(power|current|voltage)/.test(l))return'model';if(/technology|cell type|monocrystalline|polycrystalline|topcon|hjt|perc|bifacial/.test(l))return'technology';if(/country.*manufacturer|made in/.test(l))return'country';if(/peak|max(imum)?|rated|nominal.*power|pmax|power.*wp/.test(l)&&/power|pmax|wp/.test(l))return hasNoct?'noctPmax':'pmax';if(/power selection|power tolerance|tolerance.*pmax|\+\s*\d.*-/.test(l))return'powerSelection';if(/maximum power voltage|mpp voltage|vmpp/.test(l))return hasNoct?'noctVmpp':'vmpp';if(/maximum power current|mpp current|impp/.test(l))return hasNoct?'noctImpp':'impp';if(/open.?circuit voltage|voc/.test(l))return hasNoct?'noctVoc':'voc';if(/short.?circuit current|isc/.test(l))return hasNoct?'noctIsc':'isc';if(/module efficiency|efficiency/.test(l))return'efficiency';if(/^noct|^nmot|operating cell temperature|normal operating module temperature/.test(l))return'noct';if(/temperature coefficient.*pmax|temp.*coeff.*pmax|pmax.*temperature coefficient/.test(l))return'tempPmax';if(/temperature coefficient.*voc|temp.*coeff.*voc/.test(l))return'tempVoc';if(/temperature coefficient.*isc|temp.*coeff.*isc/.test(l))return'tempIsc';if(/temperature coefficient.*vmpp|temp.*coeff.*vmpp/.test(l))return'tempVmpp';if(/temperature coefficient.*impp|temp.*coeff.*impp/.test(l))return'tempImpp';if(/operating temperature/.test(l))return'operatingTemp';if(/maximum.*system voltage|system voltage/.test(l))return'maxVoltage';if(/series fuse|fuse rating/.test(l))return'fuse';if(/front.*static load|front.*test load/.test(l))return'maxStaticFront';if(/back.*static load|back.*test load/.test(l))return'maxStaticBack';if(/fire safety/.test(l))return'fireClass';if(/^safety class/.test(l))return'safetyClass';if(/solar cells|number of cells|no\. of cells|cell count/.test(l))return'cells';if(/dimension|module size/.test(l))return'dimensions';if(/^weight/.test(l))return'weight';if(/front glass/.test(l))return'frontGlass';if(/back glass/.test(l))return'backGlass';if(/^frame/.test(l))return'frame';if(/junction box|j-box/.test(l))return'junctionBox';if(/cable cross|cross section size/.test(l))return'cableSize';if(/^cable|cable length/.test(l))return'cable';if(/connector/.test(l))return'connector';if(/test load|static load/.test(l))return'testLoad';if(/packaging|modules per box|package/.test(l))return'packaging';if(/product warranty/.test(l))return'productWarranty';if(/power warranty|power guarantee/.test(l))return'powerGuarantee';if(/degradation|attenuation/.test(l))return'degradation';if(/warranty.*note|warranty.*year/.test(l))return'warrantyNotes';return null}
+function inferIdentity(text,modules){const t=text.replace(/\s+/g,' ');const brand=t.match(/\b(Trina Solar|JA Solar|Jinko Solar|LONGi|Canadian Solar|REC|Risen|Astronergy|First Solar|Qcells|Hanwha|SunPower|Seraphim|Znshine|DMEGC)\b/i);if(brand)setShared('manufacturerSeries',brand[1],modules,'high','document text');const tech=t.match(/\b(N[- ]?type[^.;]{0,80}(?:module|mono|glass)?|PERC[^.;]{0,60}|HJT[^.;]{0,60}|monocrystalline[^.;]{0,60}|monofacial[^.;]{0,40}|bifacial[^.;]{0,40})/i);if(tech)setShared('technology',tech[1],modules,'medium','document text');const model=t.match(/\b([A-Z]{2,}[A-Z0-9.-]{2,}(?:\s*\d{3,4}[A-Z]?)?(?:\/MR\/\d{3,4}V)?)\b/);if(model)setShared('model',model[1],modules,'medium','document text');const country=t.match(/Country of Manufacturer\s+([^;]{2,30})/i);if(country)setShared('country',country[1],modules,'high','document text')}
+function parseRows(rows,header,modules){let section='general';rows.forEach(row=>{const label=rowLabel(row,header?.cols);if(!label)return;section=sectionFor(label,section);const key=fieldKey(label,section);if(!key)return;const values=header?.cols?.length?rowValues(row,header.cols):[clean(row.items.slice(1).map(i=>i.text).join(' '))];values.forEach((v,i)=>{if(modules[i]&&v)setCell(modules[i],key,v,'high',`page ${row.page}`)})})}
+function parseSingleRows(rows,module){let section='general';rows.forEach(row=>{const full=row.text;section=sectionFor(full,section);let label='',value='';if(row.items.length>=2){label=clean(row.items[0].text);value=clean(row.items.slice(1).map(i=>i.text).join(' '))}const colon=full.match(/^(.{3,55})\s*[:：]\s*(.+)$/);if(colon){label=clean(colon[1]);value=clean(colon[2])}const key=fieldKey(label||full,section);if(key&&value)setCell(module,key,value,'medium',`page ${row.page}`)})}
+function addExtras(rows,header,modules){rows.forEach(row=>{const label=rowLabel(row,header?.cols);if(!label||label.length<3)return;const key=fieldKey(label,'general');if(key)return;const values=header?.cols?.length?rowValues(row,header.cols):[clean(row.items.slice(1).map(i=>i.text).join(' '))];values.forEach((v,i)=>{if(v&&modules[i])modules[i].extras.push({label,value:v,unit:'',page:row.page})})});modules.forEach(m=>{const seen=new Set();m.extras=m.extras.filter(x=>{const k=norm(x.label)+'|'+norm(x.value);if(seen.has(k))return false;seen.add(k);return true}).slice(0,80)})}
+function applySharedFallback(modules){const keys=['manufacturerSeries','model','technology','country','noct','tempPmax','tempVoc','tempIsc','tempVmpp','tempImpp','operatingTemp','maxVoltage','fuse','maxStaticFront','maxStaticBack','fireClass','safetyClass','cells','dimensions','weight','frontGlass','backGlass','frame','junctionBox','cable','cableSize','connector','testLoad','packaging','productWarranty','powerGuarantee','degradation','warrantyNotes'];keys.forEach(k=>{const src=modules.find(m=>m.data[k]?.found);if(src)modules.forEach(m=>{if(!m.data[k]?.found)m.data[k]={...src.data[k]}})})}
+async function loadPdfjs(){if(window.pdfjsLib){window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';return window.pdfjsLib}const lib=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';window.pdfjsLib=lib;return lib}
+async function extractPdf(file){const pdfjs=await loadPdfjs();const pdf=await pdfjs.getDocument({data:await file.arrayBuffer()}).promise;sourceRows=[];sourceText='';for(let p=1;p<=pdf.numPages;p++){progressLabel.textContent=`Reading page ${p} of ${pdf.numPages}…`;const page=await pdf.getPage(p),content=await page.getTextContent(),rows=itemRows(content.items,p);sourceRows.push(...rows);sourceText+=content.items.map(i=>i.str).join(' ')+'\n';progressBar.style.width=Math.round((p/pdf.numPages)*52)+'%';progressPercent.textContent=Math.round((p/pdf.numPages)*52)+'%'}progressLabel.textContent='Detecting module ratings and table layout…';progressBar.style.width='64%';progressPercent.textContent='64%';let header=findPowerHeader(sourceRows);const textPowers=coherentPowers(powersFromText(sourceText));let powers=header?.cols?.map(c=>c.n).filter((n,i,a)=>a.indexOf(n)===i)||[];if(textPowers.length>=2&&textPowers.length>powers.length){powers=textPowers;const powerSet=new Set(powers);const best=sourceRows.map(row=>{const hits=[];row.items.forEach(i=>embeddedPowerHits(i.text).forEach(n=>{if(powerSet.has(n))hits.push({n,x:i.x+(i.w||0)/2})}));const unique=[...new Map(hits.map(x=>[x.n,x])).values()];return unique.length>=2?{cols:unique.sort((a,b)=>a.x-b.x),score:unique.length}:null}).filter(Boolean).sort((a,b)=>b.score-a.score)[0];if(best)header=best}if(!powers.length){const p=findSinglePower(sourceText);powers=p?[p]:['Detected module']}modules=powers.map((p,i)=>blankModule(typeof p==='number'?p:'',typeof p==='number'?`${p} W`:'Module 1'));inferIdentity(sourceText,modules);if(header)parseRows(sourceRows,header,modules);else parseSingleRows(sourceRows,modules[0]);addExtras(sourceRows,header,modules);applySharedFallback(modules);modules.forEach(m=>{m.quality=Math.round((Object.values(m.data).filter(v=>v.found).length/Object.values(m.data).length)*100)});progressLabel.textContent='Ready for review';progressBar.style.width='100%';progressPercent.textContent='100%';return modules}
+
+function render(){reviewPanel.classList.remove('hidden');dropZone.classList.add('hidden');const missing=modules.reduce((n,m)=>n+Object.values(m.data).filter(v=>!v.found).length,0),extra=modules.reduce((n,m)=>n+m.extras.length,0);reviewTitle.textContent=`${modules.length} module${modules.length===1?'':'s'} detected`;reviewSummary.textContent=`${modules.map(m=>m.power?m.power+' W':'unrated').join(' · ')}  ·  ${missing} fields flagged  ·  ${extra} additional rows retained`;moduleTabs.innerHTML=modules.map((m,i)=>`<button class="module-tab ${i===activeModule?'active':''}" data-index="${i}" role="tab" aria-selected="${i===activeModule}">${m.power?m.power+'W':'Module '+(i+1)}</button>`).join('');moduleTabs.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{activeModule=Number(b.dataset.index);renderTable();renderTabs()}));renderTable();renderTabs()}
+function renderTabs(){moduleTabs.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('active',i===activeModule))}
+function renderTable(){const m=modules[activeModule];const sections=SECTION_DEFS.map(s=>`<tr class="section-row"><td colspan="4">${s.title}</td></tr>${s.rows.map(([key,label,unit])=>{const c=m.data[key]||makeCell();const review=!c.found;return `<tr class="${review?'needs-review':''}"><td class="param">${label}</td><td><input data-key="${key}" value="${esc(c.value)}" aria-label="${label}" /></td><td class="unit">${unit||''}</td><td class="status">${review?'<span class="flag">review</span>':'<span class="detected">detected</span>'}</td></tr>`}).join('')}`).join('');const extras=m.extras.map((x,i)=>`<tr><td class="param">${esc(x.label)}</td><td><input data-extra="${i}" value="${esc(x.value)}" aria-label="${esc(x.label)}" /></td><td class="unit">p.${x.page||''}</td><td class="status"><span class="detected">retained</span></td></tr>`).join('');tableWrap.innerHTML=`<table class="data-table"><thead><tr><th>Parameter</th><th>${m.power?m.power+'W':'Module'} value</th><th>Unit / page</th><th>Status</th></tr></thead><tbody>${sections}<tr class="section-row additional"><td colspan="4">Additional extracted data (not mapped to a standard field)</td></tr>${extras||'<tr><td colspan="4" class="empty-extra">No additional rows detected</td></tr>'}</tbody></table>`;tableWrap.querySelectorAll('input[data-key]').forEach(input=>input.addEventListener('input',e=>{const key=e.target.dataset.key;m.data[key].value=e.target.value;m.data[key].found=Boolean(e.target.value.trim());e.target.closest('tr').classList.toggle('needs-review',!m.data[key].found);e.target.parentElement.nextElementSibling.nextElementSibling.innerHTML=m.data[key].found?'<span class="detected">detected</span>':'<span class="flag">review</span>';updateSummary()}));tableWrap.querySelectorAll('input[data-extra]').forEach(input=>input.addEventListener('input',e=>{m.extras[Number(e.target.dataset.extra)].value=e.target.value}));}
+function updateSummary(){const missing=modules.reduce((n,m)=>n+Object.values(m.data).filter(v=>!v.found).length,0),extra=modules.reduce((n,m)=>n+m.extras.length,0);reviewSummary.textContent=`${modules.map(m=>m.power?m.power+' W':'unrated').join(' · ')}  ·  ${missing} fields flagged  ·  ${extra} additional rows retained`}
+function excelDataRows(m){const rows=[['PV MODULE DATA SUMMARY','','',''],[`${m.label||'PV Module'}${m.power?' – '+m.power+' W':''}`,'','',''],['Source file',sourceFileName,'',''],['Extraction quality',`${m.quality}% mapped + raw text retained`,'','']];SECTION_DEFS.forEach(s=>{rows.push([s.title,'','','']);s.rows.forEach(([k,l,u])=>rows.push([l,m.data[k]?.value||'',u,m.data[k]?.found?'Detected / edited':'Not found – review']))});if(m.extras.length){rows.push(['ADDITIONAL EXTRACTED DATA','','','']);m.extras.forEach(x=>rows.push([x.label,x.value,x.unit,`Page ${x.page||''}`]))}return rows}
+function styleSheet(ws,rows){ws['!cols']=[{wch:38},{wch:58},{wch:18},{wch:25}];ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:3}},{s:{r:1,c:0},e:{r:1,c:3}}];for(let r=0;r<rows.length;r++)for(let c=0;c<4;c++){const cell=ws[XLSX.utils.encode_cell({r,c})];if(!cell)continue;cell.s={font:{name:'Aptos',sz:r<2?15:10,bold:r<2||c===0,color:{rgb:'173B32'}},alignment:{vertical:'center',wrap_text:true},border:{bottom:{style:'thin',color:{rgb:'D9E6DF'}}},fill:{fgColor:{rgb:r<2?'DDF2E6':'FFFFFF'}}}}rows.forEach((r,i)=>{if((r[0]||'').toUpperCase()===r[0]&&r[0]&&(!r[1]||r[0].includes('ADDITIONAL'))){for(let c=0;c<4;c++){const cell=ws[XLSX.utils.encode_cell({r:i,c})];if(cell)cell.s={font:{name:'Aptos',sz:10,bold:true,color:{rgb:'075843'}},fill:{fgColor:{rgb:'CFEBDD'}},alignment:{vertical:'center'}}}}});ws['!rows']=[{hpt:28},{hpt:24},{hpt:20},{hpt:20}]}
+function downloadExcel(){const wb=XLSX.utils.book_new();const overview=[['PV DATASHEET CONVERTER – EXPORT SUMMARY',''],['Source file',sourceFileName],['Modules detected',String(modules.length)],['Module ratings',modules.map(m=>m.power?m.power+' W':'Unrated').join(', ')],['Processing','Browser-only PDF.js extraction; all raw text retained below'],['Notes','Please review yellow/flagged fields before using the workbook']];const ows=XLSX.utils.aoa_to_sheet(overview);ows['!cols']=[{wch:28},{wch:90}];for(let r=0;r<overview.length;r++)for(let c=0;c<2;c++){const cell=ows[XLSX.utils.encode_cell({r,c})];if(cell)cell.s={font:{name:'Aptos',sz:r===0?16:11,bold:r===0||c===0,color:{rgb:'173B32'}},fill:{fgColor:{rgb:r===0?'CFEBDD':'FFFFFF'}},alignment:{wrap_text:true,vertical:'center'}}}ows['!merges']=[{s:{r:0,c:0},e:{r:0,c:1}}];XLSX.utils.book_append_sheet(wb,ows,'Overview');modules.forEach((m,i)=>{const rows=excelDataRows(m),ws=XLSX.utils.aoa_to_sheet(rows);styleSheet(ws,rows);XLSX.utils.book_append_sheet(wb,ws,`${m.power||'Module'+(i+1)}W`.slice(0,31))});const raw=sourceText.split('\n').map((x,i)=>[i+1,x]);const rws=XLSX.utils.aoa_to_sheet([['RAW PDF TEXT – COMPLETE EXTRACTION',''],...raw]);rws['!cols']=[{wch:10},{wch:150}];rws['!freeze']={xSplit:0,ySplit:1};XLSX.utils.book_append_sheet(wb,rws,'Raw PDF Text');XLSX.writeFile(wb,`pv-datasheet-${new Date().toISOString().slice(0,10)}.xlsx`)}
+function showError(msg){errorPanel.textContent=msg;errorPanel.classList.remove('hidden');progressPanel.classList.add('hidden')}
+async function handleFile(file){if(!file||(!file.type.includes('pdf')&&!file.name.toLowerCase().endsWith('.pdf')))return showError('Please choose a PDF datasheet.');sourceFileName=file.name;errorPanel.classList.add('hidden');fileStatus.textContent=`Selected: ${file.name}`;fileStatus.classList.remove('hidden');progressPanel.classList.remove('hidden');progressBar.style.width='8%';progressPercent.textContent='8%';try{await extractPdf(file);activeModule=0;render()}catch(err){console.error(err);showError(err.message||'The PDF could not be read. The complete raw text can only be exported after a successful PDF read.')}}
+dropZone.addEventListener('click',e=>{if(e.target!==browseButton)fileInput.click()});browseButton.addEventListener('click',e=>{e.stopPropagation();fileInput.click()});fileInput.addEventListener('change',e=>handleFile(e.target.files[0]));['dragenter','dragover'].forEach(t=>dropZone.addEventListener(t,e=>{e.preventDefault();dropZone.classList.add('is-dragging')}));['dragleave','drop'].forEach(t=>dropZone.addEventListener(t,e=>{e.preventDefault();dropZone.classList.remove('is-dragging')}));dropZone.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));downloadButton.addEventListener('click',downloadExcel);resetButton.addEventListener('click',()=>{modules=[];sourceText='';sourceRows=[];fileInput.value='';fileStatus.classList.add('hidden');progressPanel.classList.add('hidden');reviewPanel.classList.add('hidden');errorPanel.classList.add('hidden');dropZone.classList.remove('hidden')});
